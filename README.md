@@ -13,6 +13,10 @@ python gymnasium_hello_world.py
 python mujoco_hello_world.py
 ```
 
+# MacOS specific install
+- https://developer.apple.com/metal/pytorch/
+- https://developer.apple.com/metal/tensorflow-plugin/
+
 # Exact pip list
 ```
 absl-py            1.3.0
