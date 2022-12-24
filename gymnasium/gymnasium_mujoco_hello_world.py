@@ -1,5 +1,5 @@
 """
-Reference: https://gymnasium.farama.org/environments/mujoco/inverted_pendulum/
+Source: https://gymnasium.farama.org/environments/mujoco/inverted_pendulum/
 """
 
 

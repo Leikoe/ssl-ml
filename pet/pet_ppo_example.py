@@ -1,4 +1,9 @@
-"""Basic code which shows what it's like to run PPO on the Pistonball env using the parallel API, this code is inspired by CleanRL.
+"""
+Source: https://pettingzoo.farama.org/tutorials/cleanrl/implementing_PPO/
+
+
+
+Basic code which shows what it's like to run PPO on the Pistonball env using the parallel API, this code is inspired by CleanRL.
 
 This code is exceedingly basic, with no logging or weights saving.
 The intention was for users to have a (relatively clean) ~200 line file to refer to when they want to design their own learning algorithm.

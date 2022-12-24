@@ -1,5 +1,5 @@
 """
-Reference: https://gymnasium.farama.org/content/basic_usage/
+Source: https://gymnasium.farama.org/content/basic_usage/
 """
 
 

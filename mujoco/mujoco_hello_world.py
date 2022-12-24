@@ -1,3 +1,8 @@
+"""
+Source: https://mujoco.readthedocs.io/en/latest/python.html#minimal-example
+"""
+
+
 import mujoco
 
 XML=r"""
