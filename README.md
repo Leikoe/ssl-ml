@@ -4,6 +4,7 @@
 - mujoco (2.3.1.post1)
 - gymnasium (0.27.0)
 - box2d-py (?)
+- dm_control (generating xml mujoco files)
 
 # Quick start
 
