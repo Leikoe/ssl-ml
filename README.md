@@ -3,6 +3,12 @@
 - numpy (1.24.0)
 - mujoco (2.3.1.post1)
 - gymnasium (0.27.0)
+- gymnasium robotics (mamujoco PR)
+```shell
+git clone https://github.com/Kallinteris-Andreas/Gymnasium-Robotics-Kalli
+cd Gymnasium-Robotics-Kalli
+pip install .
+```
 - box2d-py (?)
 - dm_control (generating xml mujoco files)
 
