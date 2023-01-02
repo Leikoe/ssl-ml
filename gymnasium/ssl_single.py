@@ -1,5 +1,7 @@
+import os
+
 from custom import ssl_single_env
-env = ssl_single_env.AntEnv(render_mode="human", xml_file="/Users/leo/project/ssl/ml/onshape/mjmodel.xml")
+env = ssl_single_env.AntEnv(render_mode="human", xml_file=os.getcwd()+"/../robotics/onshape/mjmodel.xml")
 
 observation, info = env.reset()
 
