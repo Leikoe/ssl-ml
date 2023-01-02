@@ -1,0 +1,14 @@
+{
+    "configuration": "default",
+    "documentId": "c43536297113d7339ca5ae3b",
+    "documentMicroversion": "db6cc61a4b36c52a8841990d",
+    "documentVersion": "754a857a16678e867674e7e0",
+    "elementId": "5b7b9e039b1c6f1b0f9da85c",
+    "fullConfiguration": "default",
+    "id": "MckBUEdB5gDLKxsfs",
+    "isStandardContent": false,
+    "name": "wheel_fix_plate_collet:1 <1>",
+    "partId": "JFD",
+    "suppressed": false,
+    "type": "Part"
+}
