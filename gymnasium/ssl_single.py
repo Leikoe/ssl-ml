@@ -1,5 +1,5 @@
-from custom import ant_env
-env = ant_env.AntEnv(render_mode="human", xml_file="/Users/leo/project/ssl/ml/onshape/mjmodel.xml")
+from custom import ssl_single_env
+env = ssl_single_env.AntEnv(render_mode="human", xml_file="/Users/leo/project/ssl/ml/onshape/mjmodel.xml")
 
 observation, info = env.reset()
 
