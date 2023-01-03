@@ -2,8 +2,8 @@ import numpy
 from gymnasium_robotics import mamujoco_v0
 
 if __name__ == "__main__":
-    env = mamujoco_v0.parallel_env(scenario='Ant', agent_conf='2x4', agent_obsk=0, render_mode=None)
-    # env = mamujoco_v0.parallel_env(scenario='Humanoid', agent_conf='9|8', agent_obsk=0, render_mode=None)
+    env = mamujoco_v0.parallel_env(scenario='Ant', agent_conf='2x4', agent_obsk=0, render_mode="human")
+    # env = mamujoco_v0.parallel_env(scenario='Humanoid', agent_conf='9|8', agent_obsk=0, render_mode="human")
     # env = mamujoco_v0.parallel_env(scenario='Reacher', agent_conf='2x1', agent_obsk=1, render_mode=None)
     # env = mamujoco_v0.parallel_env(scenario='coupled_half_cheetah', agent_conf='1p1', agent_obsk=1, render_mode=None)
     # env = mamujoco_v0.parallel_env(scenario='Swimmer', agent_conf='2x1', agent_obsk=0, render_mode='human')
@@ -11,7 +11,7 @@ if __name__ == "__main__":
     # env = mamujoco_v0.parallel_env(scenario='coupled_half_cheetah', agent_conf='1p1', agent_obsk=0, render_mode='human')
     # env = mamujoco_v0.parallel_env(scenario='manyagent_swimmer', agent_conf='2x1', agent_obsk=0, render_mode='human')
 
-    n_episodes = 1
+    n_episodes = 10
     debug_step = 0
 
     for e in range(n_episodes):
