@@ -1,6 +1,7 @@
 from custom import ant_env
-env = ant_env.AntEnv(render_mode="human", xml_file="/Users/leo/project/ssl/ml/onshape/mjmodel.xml")
-
+import gymnasium
+# env = ant_env.AntEnv(render_mode="human", xml_file="/Users/leo/project/ssl/ml/onshape/mjmodel.xml")
+env = gymnasium.make("ALE/Breakout-v5")
 observation, info = env.reset()
 
 for _ in range(1000):

@@ -13,17 +13,17 @@ from tianshou.data import Collector
 from tianshou.env import DummyVectorEnv, PettingZooEnv
 from tianshou.policy import MultiAgentPolicyManager, RandomPolicy
 
-from pettingzoo.butterfly import pistonball_v6
+from pettingzoo.classic import rps_v2
 
 if __name__ == "__main__":
     # Step 1: Load the PettingZoo environment
-    env = pistonball_v6.env(render_mode="human")
+    env = rps_v2.env(render_mode="human")
 
     # Step 2: Wrap the environment for Tianshou interfacing
     env = PettingZooEnv(env)
 
     # Step 3: Define policies for each agent
-    policies = MultiAgentPolicyManager([RandomPolicy()] * len(env.agents), env)
+    policies = MultiAgentPolicyManager([RandomPolicy(), RandomPolicy()], env)
 
     # Step 4: Convert the env to vector format
     env = DummyVectorEnv([lambda: env])
