@@ -1,9 +1,4 @@
-"""
-Source: https://pettingzoo.farama.org/tutorials/cleanrl/implementing_PPO/
-
-
-
-Basic code which shows what it's like to run PPO on the Pistonball env using the parallel API, this code is inspired by CleanRL.
+"""Basic code which shows what it's like to run PPO on the Pistonball env using the parallel API, this code is inspired by CleanRL.
 
 This code is exceedingly basic, with no logging or weights saving.
 The intention was for users to have a (relatively clean) ~200 line file to refer to when they want to design their own learning algorithm.
@@ -15,6 +10,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import tqdm
 from supersuit import color_reduction_v0, frame_stack_v1, resize_v1
 from torch.distributions.categorical import Categorical
 
@@ -22,7 +18,7 @@ from pettingzoo.butterfly import pistonball_v6
 
 
 class Agent(nn.Module):
-    def __init__(self, num_actions):
+    def __init__(self, actions_size):
         super().__init__()
 
         self.network = nn.Sequential(
@@ -39,7 +35,7 @@ class Agent(nn.Module):
             self._layer_init(nn.Linear(128 * 8 * 8, 512)),
             nn.ReLU(),
         )
-        self.actor = self._layer_init(nn.Linear(512, num_actions), std=0.01)
+        self.actor = self._layer_init(nn.Linear(512, np.prod(actions_size)), std=0.01)
         self.critic = self._layer_init(nn.Linear(512, 1))
 
     def _layer_init(self, layer, std=np.sqrt(2), bias_const=0.0):
@@ -52,11 +48,11 @@ class Agent(nn.Module):
 
     def get_action_and_value(self, x, action=None):
         hidden = self.network(x / 255.0)
-        logits = self.actor(hidden)
+        logits = torch.sigmoid(self.actor(hidden)) * 2 - 1
         probs = Categorical(logits=logits)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action), probs.entropy(), self.critic(hidden)
+        return logits, probs.log_prob(action), probs.entropy(), self.critic(hidden)
 
 
 def batchify_obs(obs, device):
@@ -85,12 +81,10 @@ def unbatchify(x, env):
     """Converts np array to PZ style arguments."""
     x = x.cpu().numpy()
     x = {a: x[i] for i, a in enumerate(env.possible_agents)}
-
     return x
 
 
 if __name__ == "__main__":
-
     """ALGO PARAMS"""
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     ent_coef = 0.1
@@ -101,21 +95,21 @@ if __name__ == "__main__":
     stack_size = 4
     frame_size = (64, 64)
     max_cycles = 125
-    total_episodes = 2
+    total_episodes = 3
 
     """ ENV SETUP """
     env = pistonball_v6.parallel_env(
-        render_mode="rgb_array", continuous=False, max_cycles=max_cycles
+        render_mode="rgb_array", continuous=True, max_cycles=max_cycles
     )
     env = color_reduction_v0(env)
     env = resize_v1(env, frame_size[0], frame_size[1])
     env = frame_stack_v1(env, stack_size=stack_size)
     num_agents = len(env.possible_agents)
-    num_actions = env.action_space(env.possible_agents[0]).n
+    actions_size = env.action_space(env.possible_agents[0]).shape
     observation_size = env.observation_space(env.possible_agents[0]).shape
 
     """ LEARNER SETUP """
-    agent = Agent(num_actions=num_actions).to(device)
+    agent = Agent(actions_size=actions_size).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=0.001, eps=1e-5)
 
     """ ALGO LOGIC: EPISODE STORAGE"""
@@ -131,8 +125,10 @@ if __name__ == "__main__":
     """ TRAINING LOGIC """
     # train for n number of episodes
     for episode in range(total_episodes):
+        print(f"EPISODE #{episode}")
 
         # collect an episode
+        print("     COLLECTING")
         with torch.no_grad():
 
             # collect observations and convert to batch of torch tensors
@@ -141,7 +137,7 @@ if __name__ == "__main__":
             total_episodic_return = 0
 
             # each episode has num_steps
-            for step in range(0, max_cycles):
+            for step in tqdm.tqdm(range(0, max_cycles)):
 
                 # rollover the observation
                 obs = batchify_obs(next_obs, device)
@@ -158,7 +154,7 @@ if __name__ == "__main__":
                 rb_obs[step] = obs
                 rb_rewards[step] = batchify(rewards, device)
                 rb_terms[step] = batchify(terms, device)
-                rb_actions[step] = actions
+                rb_actions[step] = actions.flatten()
                 rb_logprobs[step] = logprobs
                 rb_values[step] = values.flatten()
 
@@ -193,10 +189,11 @@ if __name__ == "__main__":
         # Optimizing the policy and value network
         b_index = np.arange(len(b_obs))
         clip_fracs = []
+        print("     OPTIMIZING NN")
         for repeat in range(3):
             # shuffle the indices we use to access the data
             np.random.shuffle(b_index)
-            for start in range(0, len(b_obs), batch_size):
+            for start in tqdm.tqdm(range(0, len(b_obs), batch_size)):
                 # select the indices we want to train on
                 end = start + batch_size
                 batch_index = b_index[start:end]
@@ -264,7 +261,8 @@ if __name__ == "__main__":
         print("\n-------------------------------------------\n")
 
     """ RENDER THE POLICY """
-    env = pistonball_v6.parallel_env(render_mode="human", continuous=False)
+    print("RENDERING POLICY")
+    env = pistonball_v6.parallel_env(render_mode="human", continuous=True)
     env = color_reduction_v0(env)
     env = resize_v1(env, 64, 64)
     env = frame_stack_v1(env, stack_size=4)
@@ -283,4 +281,3 @@ if __name__ == "__main__":
                 obs = batchify_obs(obs, device)
                 terms = [terms[a] for a in terms]
                 truncs = [truncs[a] for a in truncs]
-

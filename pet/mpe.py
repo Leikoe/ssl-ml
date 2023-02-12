@@ -1,3 +1,4 @@
+from pettingzoo.butterfly import knights_archers_zombies_v10
 from pettingzoo.mpe import simple_speaker_listener_v3
 from pettingzoo.classic import connect_four_v3
 import supersuit
@@ -38,10 +39,11 @@ def _get_agents(
         if isinstance(env.observation_space, gym.spaces.Dict)
         else env.observation_space
     )
-    if agent_learn is None:
+    agents = []
+    for _ in range(env.num_agents):
         # model
         net = Net(
-            state_shape=observation_space["observation"].shape
+            state_shape=observation_space.shape
             or observation_space.n,
             action_shape=env.action_space.shape or env.action_space.n,
             hidden_sizes=[128, 128, 128, 128],
@@ -49,44 +51,24 @@ def _get_agents(
         ).to("cuda" if torch.cuda.is_available() else "cpu")
         if optim is None:
             optim = torch.optim.Adam(net.parameters(), lr=1e-4)
-        agent_learn = DQNPolicy(
+        agent = DQNPolicy(
             model=net,
             optim=optim,
             discount_factor=0.9,
             estimation_step=3,
             target_update_freq=320,
         )
+        agents.append(agent)
 
-    if agent_opponent is None:
-        # model
-        net = Net(
-            state_shape=observation_space["observation"].shape
-                        or observation_space.n,
-            action_shape=env.action_space.shape or env.action_space.n,
-            hidden_sizes=[128, 128, 128, 128],
-            device="cuda" if torch.cuda.is_available() else "cpu",
-        ).to("cuda" if torch.cuda.is_available() else "cpu")
-        if optim is None:
-            optim = torch.optim.Adam(net.parameters(), lr=1e-4)
-        agent_opponent = DQNPolicy(
-            model=net,
-            optim=optim,
-            discount_factor=0.9,
-            estimation_step=3,
-            target_update_freq=320,
-        )
-        # agent_opponent = RandomPolicy()
-
-    agents = [agent_opponent, agent_learn]
     policy = MultiAgentPolicyManager(agents, env)
     return policy, optim, env.agents
 
 
 def _get_env(render_mode=None):
     """This function is needed to provide callables for DummyVectorEnv."""
-    env = connect_four_v3.env(render_mode=render_mode)
-    # env = supersuit.multiagent_wrappers.pad_observations_v0(env)
-    # env = supersuit.multiagent_wrappers.pad_action_space_v0(env)
+    env = knights_archers_zombies_v10.env(render_mode=render_mode)
+    env = supersuit.multiagent_wrappers.pad_observations_v0(env)
+    env = supersuit.multiagent_wrappers.pad_action_space_v0(env)
 
     return PettingZooEnv(env)
 
@@ -166,4 +148,4 @@ if __name__ == "__main__":
     collector = Collector(policy, env)
 
     # Step 6: Execute the environment with the agents playing for 1 episode, and render a frame every 0.1 seconds
-    result = collector.collect(n_episode=1, render=0.2)
+    result = collector.collect(n_episode=1, render=0.4)

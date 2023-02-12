@@ -13,7 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from tianshou.data import Collector, VectorReplayBuffer
 from tianshou.env import DummyVectorEnv
-from tianshou.env.pettingzoo_env import PettingZooEnv
+# from tianshou.env.pettingzoo_env import PettingZooEnv
+from pettingzooenv_wrapper import PettingZooEnv
 from tianshou.policy import BasePolicy, MultiAgentPolicyManager, PPOPolicy
 from tianshou.trainer import onpolicy_trainer
 from tianshou.utils import TensorboardLogger
@@ -22,6 +23,7 @@ from dm_control.locomotion import soccer as dm_soccer
 from shimmy.dm_control_multiagent_compatibility import (
     DmControlMultiAgentCompatibilityV0,
 )
+from pettingzoo.utils import parallel_to_aec
 
 class DQN(nn.Module):
     """Reference: Human-level control through deep reinforcement learning.
