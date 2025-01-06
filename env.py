@@ -25,7 +25,7 @@ def new_env() -> mjx.Data:
     # init code here ...
     return mjx_data
 
-# @jax.jit
+@jax.jit
 def step_env(env: mjx.Data, action: jax.Array) -> mjx.Data:
     """
     Steps the env using the given `action`.
@@ -57,22 +57,27 @@ if __name__ == "__main__":
     env = new_env()
     mj_data = mjx.get_data(_MJ_MODEL, env)
 
-    frames = []
-    renderer = mujoco.Renderer(_MJ_MODEL, height=360, width=480)
-    for i in range(100):
-        step_start = time.time()
-        env = step_env(env, jnp.array([5., 0.]))
-        vel = env.qvel[ROBOT_QVEL_HINGE]
-        print(vel)
-        mj_data = mjx.get_data(_MJ_MODEL, env)
+    duration = 2.  # (seconds)
+    framerate = 25  # (Hz)
 
-        renderer.update_scene(mj_data)
-        pixels = renderer.render()
-        frames.append(pixels)
-        
+    frames = []
+    renderer = mujoco.Renderer(_MJ_MODEL, width=1920, height=1080)
+    while env.time < duration:
+        step_start = time.time()
+
+        target_vel = jnp.array([5., 0.]) # placeholder for policy output
+        env = step_env(env, target_vel)
+        print(len(frames), env.qvel[ROBOT_QVEL_HINGE])
+        if len(frames) < env.time * framerate:
+            mj_data = mjx.get_data(_MJ_MODEL, env)
+            renderer.update_scene(mj_data)
+            pixels = renderer.render()
+            frames.append(pixels)
+    renderer.close()
+    
     import numpy as np
     from PIL import Image
 
     imgs = [Image.fromarray(img) for img in frames]
     # duration is the number of milliseconds between frames; this is 40 frames per second
-    imgs[0].save("array.gif", save_all=True, append_images=imgs[1:], duration=len(frames) * (1/60.), loop=0)
+    imgs[0].save("render.gif", save_all=True, append_images=imgs[1:], duration=40, loop=0)
