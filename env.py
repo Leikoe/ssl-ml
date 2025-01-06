@@ -12,6 +12,7 @@ _MJ_MODEL = mujoco.MjModel.from_xml_path("scene.xml")
 _MJX_MODEL = mjx.put_model(_MJ_MODEL)
 ROBOT_BASE_ID = mjx.name2id(_MJ_MODEL, mjx.ObjType.BODY, 'robot_base')
 ROBOT_QPOS = jnp.array([_MJ_MODEL.joint("x_pos").qposadr[0], _MJ_MODEL.joint("y_pos").qposadr[0]])
+ROBOT_QPOS_ORIENTATION = _MJ_MODEL.joint("orientation").qposadr[0]
 ROBOT_QVEL = jnp.array([_MJ_MODEL.joint("x_pos").dofadr[0], _MJ_MODEL.joint("y_pos").dofadr[0]])
 ROBOT_CTRL_IDS = jnp.array([_MJ_MODEL.actuator("forward_motor").id, _MJ_MODEL.actuator("left_motor").id])
 BALL_QPOS_IDS = jnp.arange(3) + _MJ_MODEL.joint("free_ball").qposadr[0]
@@ -26,7 +27,7 @@ M = _MJ_MODEL.body("robot_base").mass
 def new_env() -> mjx.Data:
     mjx_data = mjx.make_data(_MJX_MODEL)
     # init code here ...
-    return mjx_data
+    return mjx_data.replace(qpos=mjx_data.qpos.at[ROBOT_QPOS_ORIENTATION].set(1.5)) # TODO: fix kick orientation
 
 class Action(NamedTuple):
     target_vel: jax.Array
@@ -44,7 +45,7 @@ def step_env(env: mjx.Data, action: Action) -> mjx.Data:
     Returns:
         mjx.Data: The new env state.
     """
-    
+
     new_qvel = env.qvel
 
     # kick
@@ -53,10 +54,12 @@ def step_env(env: mjx.Data, action: Action) -> mjx.Data:
 
     robot_to_ball = ball_pos-robot_pos
     robot_to_ball_distance = jnp.linalg.norm(robot_to_ball)
+    robot_to_ball_normalized = robot_to_ball / robot_to_ball_distance
+
     kick_would_hit_ball = robot_to_ball_distance < (0.09 + 0.025) # robot radius + ball radius
     new_qvel = jax.lax.cond(
         jnp.logical_and(action.kick, kick_would_hit_ball), # if we want to kick and the kick can hit the ball, apply vel
-        lambda: new_qvel.at[BALL_QVEL_IDS[:3]].set(jnp.array([5., 0., 0.])),
+        lambda: new_qvel.at[BALL_QVEL_IDS[:2]].set(robot_to_ball_normalized * 5.),
         lambda: new_qvel
     )
     env = env.replace(qvel=new_qvel)
