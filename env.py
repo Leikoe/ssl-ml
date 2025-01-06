@@ -10,13 +10,11 @@ from mujoco import mjx
 # mujoco consts
 _MJ_MODEL = mujoco.MjModel.from_xml_path("scene.xml")
 _MJX_MODEL = mjx.put_model(_MJ_MODEL)
-ROBOT_BASE_ID = mjx.name2id(_MJ_MODEL, mjx.ObjType.BODY, 'robot_base')
-ROBOT_QPOS = jnp.array([_MJ_MODEL.joint("x_pos").qposadr[0], _MJ_MODEL.joint("y_pos").qposadr[0]])
-ROBOT_QPOS_ORIENTATION = _MJ_MODEL.joint("orientation").qposadr[0]
-ROBOT_QVEL = jnp.array([_MJ_MODEL.joint("x_pos").dofadr[0], _MJ_MODEL.joint("y_pos").dofadr[0]])
-ROBOT_CTRL_IDS = jnp.array([_MJ_MODEL.actuator("forward_motor").id, _MJ_MODEL.actuator("left_motor").id])
-BALL_QPOS_IDS = jnp.arange(3) + _MJ_MODEL.joint("free_ball").qposadr[0]
-BALL_QVEL_IDS = jnp.arange(6) + _MJ_MODEL.joint("free_ball").dofadr[0] # linear speed, rotational speed
+ROBOT_QPOS_ADRS = jnp.array([_MJ_MODEL.joint("x_pos").qposadr[0], _MJ_MODEL.joint("y_pos").qposadr[0], _MJ_MODEL.joint("orientation").qposadr[0]]) # (x, y, orienation)
+ROBOT_QVEL_ADRS = jnp.array([_MJ_MODEL.joint("x_pos").dofadr[0], _MJ_MODEL.joint("y_pos").dofadr[0], _MJ_MODEL.joint("orientation").dofadr[0]])  # (vx, vy, vangular)
+ROBOT_CTRL_ADRS = jnp.array([_MJ_MODEL.actuator("forward_motor").id, _MJ_MODEL.actuator("left_motor").id, _MJ_MODEL.actuator("orientation_motor").id])  # (x, y, angular) motors
+BALL_QPOS_ADRS = jnp.arange(3) + _MJ_MODEL.joint("free_ball").qposadr[0]  # (x, y, z) pos
+BALL_QVEL_ADRS = jnp.arange(6) + _MJ_MODEL.joint("free_ball").dofadr[0]  # linear speed, rotational speed
 
 # ctrl consts
 A_MAX = 5.
@@ -27,7 +25,7 @@ M = _MJ_MODEL.body("robot_base").mass
 def new_env() -> mjx.Data:
     mjx_data = mjx.make_data(_MJX_MODEL)
     # init code here ...
-    return mjx_data.replace(qpos=mjx_data.qpos.at[ROBOT_QPOS_ORIENTATION].set(1.5)) # TODO: fix kick orientation
+    return mjx_data.replace(qpos=mjx_data.qpos.at[ROBOT_QPOS_ADRS[2]].set(0.)) # TODO: fix kick orientation
 
 class Action(NamedTuple):
     target_vel: jax.Array
@@ -49,22 +47,24 @@ def step_env(env: mjx.Data, action: Action) -> mjx.Data:
     new_qvel = env.qvel
 
     # kick
-    robot_pos = env.qpos[ROBOT_QPOS]
-    ball_pos = env.qpos[BALL_QPOS_IDS][:2]
+    robot_pos = env.qpos[ROBOT_QPOS_ADRS][:2]
+    ball_pos = env.qpos[BALL_QPOS_ADRS][:2]
 
     robot_to_ball = ball_pos-robot_pos
+    robot_to_ball_angle = jnp.arctan2(robot_to_ball[1], robot_to_ball[0])
     robot_to_ball_distance = jnp.linalg.norm(robot_to_ball)
     robot_to_ball_normalized = robot_to_ball / robot_to_ball_distance
 
-    kick_would_hit_ball = robot_to_ball_distance < (0.09 + 0.025) # robot radius + ball radius
+    REACH = 0.09 + 0.025# robot radius + ball radius
+    kick_would_hit_ball = (robot_to_ball_distance < REACH) & ((robot_to_ball_angle < 0.2) & (robot_to_ball_angle > -0.2)) 
     new_qvel = jax.lax.cond(
         jnp.logical_and(action.kick, kick_would_hit_ball), # if we want to kick and the kick can hit the ball, apply vel
-        lambda: new_qvel.at[BALL_QVEL_IDS[:2]].set(robot_to_ball_normalized * 5.),
+        lambda: new_qvel.at[BALL_QVEL_ADRS[:2]].set(robot_to_ball_normalized * 5.),
         lambda: new_qvel
     )
     env = env.replace(qvel=new_qvel)
 
-    vel = env.qvel[ROBOT_QVEL]
+    vel = env.qvel[ROBOT_QVEL_ADRS][:2]
 
     target_vel = action.target_vel # for now
     vel_err = target_vel - vel
@@ -77,7 +77,7 @@ def step_env(env: mjx.Data, action: Action) -> mjx.Data:
     # compute force
     f = M * a_target
 
-    env = env.replace(ctrl=env.ctrl.at[ROBOT_CTRL_IDS].set(f))
+    env = env.replace(ctrl=env.ctrl.at[ROBOT_CTRL_ADRS[:2]].set(f))
     return mjx.step(_MJX_MODEL, env)
 
 if __name__ == "__main__":
@@ -93,16 +93,17 @@ if __name__ == "__main__":
         print(f"step {len(frames)}")
         step_start = time.time()
 
-        robot_pos = env.qpos[ROBOT_QPOS]
-        ball_pos = env.qpos[BALL_QPOS_IDS][:2]
+        robot_pos = env.qpos[ROBOT_QPOS_ADRS][:2]
+        ball_pos = env.qpos[BALL_QPOS_ADRS][:2]
 
         robot_to_ball = ball_pos-robot_pos
+        robot_to_ball_angle = jnp.arctan2(robot_to_ball[1], robot_to_ball[0])
         robot_to_ball_distance = np.linalg.norm(robot_to_ball)
         kick = bool(robot_to_ball_distance < (0.09 + 0.025))
 
         target_vel = jnp.array([2., 0.]) # placeholder for policy output
         action = Action(target_vel, kick)
-        print(action, robot_to_ball_distance)
+        print(action)
 
         env = step_env(env, action)
         if len(frames) < env.time * framerate:
