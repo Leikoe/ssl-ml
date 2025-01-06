@@ -13,6 +13,7 @@ ROBOT_BASE_ID = mjx.name2id(_MJ_MODEL, mjx.ObjType.BODY, 'robot_base')
 ROBOT_QPOS_HINGE = jnp.array([_MJ_MODEL.joint("x_pos").qposadr[0], _MJ_MODEL.joint("y_pos").qposadr[0]])
 ROBOT_QVEL_HINGE = jnp.array([_MJ_MODEL.joint("x_pos").dofadr[0], _MJ_MODEL.joint("y_pos").dofadr[0]])
 ROBOT_CTRL_IDS = jnp.array([_MJ_MODEL.actuator("forward_motor").id, _MJ_MODEL.actuator("left_motor").id])
+BALL_QVEL_IDS = jnp.arange(6) + _MJ_MODEL.joint("free_ball").dofadr[0]
 
 # ctrl consts
 A_MAX = 5.
@@ -23,7 +24,8 @@ M = _MJ_MODEL.body("robot_base").mass
 def new_env() -> mjx.Data:
     mjx_data = mjx.make_data(_MJX_MODEL)
     # init code here ...
-    return mjx_data
+    qvel_ball_go_brr = mjx_data.qvel.at[BALL_QVEL_IDS[:3]].set(jnp.array([5., 0., 0.]))
+    return mjx_data.replace(qvel=qvel_ball_go_brr)
 
 @jax.jit
 def step_env(env: mjx.Data, action: jax.Array) -> mjx.Data:

@@ -16,8 +16,8 @@
             <joint name="y_pos" type="slide" axis="0 1 0"/>
             <joint name="orientation" type="hinge" axis="0 0 1"/>
             <camera name="side" pos="0 -3 1" xyaxes="1 0 0 0 1 2" mode="trackcom"/>
-            <geom name="chassis" type="mesh" mesh="robot_body" rgba="0.3 0.3 0.3 1" mass="2"/>
-            <geom name="kicker" type="box" size="0.045 0.01 0.05" pos="0 -0.065 0.05" rgba="0.3 0.3 0.3 1" mass="0.2"/>
+            <geom name="chassis" type="mesh" mesh="robot_body" rgba="0.3 0.3 0.3 1" mass="2" euler="0 0 90"/>
+            <geom name="kicker" type="box" size="0.01 0.045 0.05" pos="0.065 0 0.05" rgba="0.3 0.3 0.3 1" mass="0.2"/>
         </body>
     </worldbody>
 
