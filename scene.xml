@@ -1,0 +1,48 @@
+<mujoco model="robot scene">
+  <include file="robot.xml"/>
+
+  <statistic center="0 0 0.8" extent="2"/>
+
+  <option noslip_iterations="1"></option>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.1 0.6 0.3" rgb2="0.1 0.8 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <light pos="1 -1 1.5" dir="-1 1 -1" diffuse="0.5 0.5 0.5" directional="true"/>
+    <geom name="floor" size="0 0 0.05" pos="0 0 0" type="plane" material="groundplane"/>
+    <body name="ball" pos="0.5 0 0.025">
+        <freejoint name="free_ball" />
+        <geom name="ball_geom" size="0.025" pos="0 0 0" type="sphere" rgba="1 0.647 0 1" mass="0.02" />
+    </body>
+
+    <body name="field_walls" pos="0 0 0">
+        <geom name="field_blue_wall" size="0.01 3.3 0.1" pos="-4.8 0 0" type="box" rgba="1 1 1 1" />
+        <geom name="field_yellow_wall" size="0.01 3.3 0.1" pos="4.8 0 0" type="box" rgba="1 1 1 1" />
+
+        <geom name="field_left_wall" size="4.8 0.01 0.1" pos="0 3.3 0" type="box" rgba="1 1 1 1" />
+        <geom name="field_right_wall" size="4.8 0.01 0.1" pos="0 -3.3 0" type="box" rgba="1 1 1 1" />
+    </body>
+
+    <body name="field_blue_goal" pos="0 0 0">
+        <geom name="field_blue_goal_back_wall" size="0.01 0.5 0.1" pos="-4.69 0 0" type="box" rgba="1 1 1 1" />
+        <geom name="field_blue_goal_left_wall" size="0.09 0.01 0.1" pos="-4.59 0.51 0" type="box" rgba="1 1 1 1" />
+        <geom name="field_blue_goal_right_wall" size="0.09 0.01 0.1" pos="-4.59 -0.51 0" type="box" rgba="1 1 1 1" />
+    </body>
+
+    <body name="field_yellow_goal" pos="0 0 0">
+        <geom name="field_yellow_goal_back_wall" size="0.01 0.5 0.1" pos="4.69 0 0" type="box" rgba="1 1 1 1" />
+        <geom name="field_yellow_goal_left_wall" size="0.09 0.01 0.1" pos="4.59 0.51 0" type="box" rgba="1 1 1 1" />
+        <geom name="field_yellow_goal_right_wall" size="0.09 0.01 0.1" pos="4.59 -0.51 0" type="box" rgba="1 1 1 1" />
+    </body>
+  </worldbody>
+</mujoco>
