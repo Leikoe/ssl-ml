@@ -75,9 +75,7 @@ if __name__ == "__main__":
             frames.append(pixels)
     renderer.close()
     
-    import numpy as np
     from PIL import Image
-
     imgs = [Image.fromarray(img) for img in frames]
-    # duration is the number of milliseconds between frames; this is 40 frames per second
+    # duration is the number of milliseconds between frames; this is 25 fps
     imgs[0].save("render.gif", save_all=True, append_images=imgs[1:], duration=40, loop=0)
