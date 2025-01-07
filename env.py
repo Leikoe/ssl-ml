@@ -25,7 +25,7 @@ M = _MJ_MODEL.body("robot_base").mass
 def new_env() -> mjx.Data:
     mjx_data = mjx.make_data(_MJX_MODEL)
     # init code here ...
-    return mjx_data.replace(qpos=mjx_data.qpos.at[ROBOT_QPOS_ADRS[2]].set(0.)) # TODO: fix kick orientation
+    return mjx_data.replace(qvel=mjx_data.qvel.at[BALL_QVEL_ADRS[0]].set(-1.)) # TODO: fix kick orientation
 
 class Action(NamedTuple):
     target_vel: jax.Array
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         robot_to_ball_distance = np.linalg.norm(robot_to_ball)
         kick = bool(robot_to_ball_distance < (0.09 + 0.025))
 
-        target_vel = jnp.array([2., 0.]) # placeholder for policy output
+        target_vel = jnp.array([0., 0.]) # placeholder for policy output
         action = Action(target_vel, kick)
         print(action)
 
