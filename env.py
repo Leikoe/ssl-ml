@@ -84,10 +84,10 @@ def step_env(env: Env, action: Action) -> tuple[Env, Observation, float]:
 
     REACH = 0.09 + 0.025# robot radius + ball radius
     kick_would_hit_ball = (robot_to_ball_distance < REACH) & ((robot_to_ball_angle < 0.2) & (robot_to_ball_angle > -0.2))
-    new_qvel = jax.lax.cond(
+    new_qvel = jax.lax.select(
         jnp.logical_and(action.kick, kick_would_hit_ball), # if we want to kick and the kick can hit the ball, apply vel
-        lambda: new_qvel.at[BALL_QVEL_ADRS[:2]].set(robot_to_ball_normalized * 5.),
-        lambda: new_qvel
+        new_qvel.at[BALL_QVEL_ADRS[:2]].set(robot_to_ball_normalized * 5.),
+        new_qvel
     )
     mjx_data = mjx_data.replace(qvel=new_qvel)
 
@@ -99,7 +99,7 @@ def step_env(env: Env, action: Action) -> tuple[Env, Observation, float]:
     # clip speed
     a_target = K*vel_err
     a_target_norm = jnp.linalg.norm(a_target)
-    a_target = jax.lax.cond(jnp.linalg.norm(a_target) > A_MAX, lambda: a_target * (A_MAX / a_target_norm), lambda: a_target)
+    a_target = jax.lax.select(jnp.linalg.norm(a_target) > A_MAX, a_target * (A_MAX / a_target_norm), a_target)
 
     # compute force
     f = M * a_target
