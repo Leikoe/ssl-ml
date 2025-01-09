@@ -21,6 +21,8 @@ A_MAX = 5.
 K = 4.
 M = _MJ_MODEL.body("robot_base").mass
 
+# temp goal
+TARGET_POS = jnp.array([3, 2.])
 
 class Env(NamedTuple):
     mjx_data: mjx.Data
@@ -39,25 +41,22 @@ class Action(NamedTuple):
     kick: bool
 
 
-def _get_obs(env: Env) -> Observation:
+def _get_obs(mjx_data: mjx.Data) -> Observation:
     return Observation(
-        pos = env.mjx_data.qpos[ROBOT_QPOS_ADRS][:2],
-        orientation = env.mjx_data.qpos[ROBOT_QPOS_ADRS][2],
-        vel = env.mjx_data.qvel[ROBOT_QVEL_ADRS][:2],
-        angular_vel = env.mjx_data.qvel[ROBOT_QVEL_ADRS][2],
-        ball_pos = env.mjx_data.qpos[BALL_QPOS_ADRS][:3],
-        ball_vel = env.mjx_data.qvel[BALL_QVEL_ADRS][:3]
+        pos = mjx_data.qpos[ROBOT_QPOS_ADRS][:2],
+        orientation = mjx_data.qpos[ROBOT_QPOS_ADRS][2],
+        vel = mjx_data.qvel[ROBOT_QVEL_ADRS][:2],
+        angular_vel = mjx_data.qvel[ROBOT_QVEL_ADRS][2],
+        ball_pos = mjx_data.qpos[BALL_QPOS_ADRS][:3],
+        ball_vel = mjx_data.qvel[BALL_QVEL_ADRS][:3]
     )
 
 def new_env() -> tuple[Env, Observation]:
     mjx_data = mjx.make_data(_MJX_MODEL)
     # init code here ...
-
-    env = Env(
-        mjx_data = mjx_data.replace(qvel=mjx_data.qvel.at[BALL_QVEL_ADRS[0]].set(-1.)), # TODO: fix kick orientation
-        reward = 0.
-    )
-    return env, _get_obs(env)
+    mjx_data = mjx_data.replace(qvel=mjx_data.qvel.at[BALL_QVEL_ADRS[0]].set(-1.)) # TODO: fix kick orientation
+    obs = _get_obs(mjx_data)
+    return Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos)), obs
 
 @jax.jit
 def step_env(env: Env, action: Action) -> tuple[Env, Observation, float]:
@@ -106,11 +105,10 @@ def step_env(env: Env, action: Action) -> tuple[Env, Observation, float]:
     f = M * a_target
 
     mjx_data = mjx_data.replace(ctrl=mjx_data.ctrl.at[ROBOT_CTRL_ADRS[:2]].set(f))
-    new_env_state = Env(
-        mjx_data = mjx.step(_MJX_MODEL, mjx_data),
-        reward = 0.
-    )
-    return new_env_state, _get_obs(new_env_state), new_env_state.reward
+    mjx_data = mjx.step(_MJX_MODEL, mjx_data)
+    obs = _get_obs(mjx_data)
+    new_env_state = Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos))
+    return new_env_state, obs, new_env_state.reward
 
 if __name__ == "__main__":
     env, _ = new_env()
@@ -133,11 +131,11 @@ if __name__ == "__main__":
         robot_to_ball_distance = np.linalg.norm(robot_to_ball)
         kick = bool(robot_to_ball_distance < (0.09 + 0.025))
 
-        target_vel = jnp.array([0., 0.]) # placeholder for policy output
+        target_vel = jnp.array([1., 0.]) # placeholder for policy output
         action = Action(target_vel, kick)
 
-        env, obs, _ = step_env(env, action)
-        print(obs)
+        env, obs, reward = step_env(env, action)
+        print(obs, reward)
         if len(frames) < env.mjx_data.time * framerate:
             mj_data = mjx.get_data(_MJ_MODEL, env.mjx_data)
             renderer.update_scene(mj_data)
