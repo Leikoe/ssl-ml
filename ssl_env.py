@@ -27,6 +27,8 @@ TARGET_POS = jnp.array([3, 2.])
 class Env(NamedTuple):
     mjx_data: mjx.Data
     reward: float
+    max_steps: int
+    step: int
 
 class Observation(NamedTuple):
     pos: jax.Array  # (x, y)
@@ -51,24 +53,31 @@ def _get_obs(mjx_data: mjx.Data) -> Observation:
         ball_vel = mjx_data.qvel[BALL_QVEL_ADRS][:3]
     )
 
-def new_env() -> tuple[Env, Observation]:
+def new_env(max_steps: int, key: Optional[jax.Array]) -> tuple[Env, Observation]:
     mjx_data = mjx.make_data(_MJX_MODEL)
     # init code here ...
     mjx_data = mjx_data.replace(qvel=mjx_data.qvel.at[BALL_QVEL_ADRS[0]].set(-1.)) # TODO: fix kick orientation
+    if key is not None:
+        pos = jax.random.uniform(key, (2,), float, jnp.array([-4., -3.]), jnp.array([-0.2, 3.]))
+        mjx_data = mjx_data.replace(qpos=mjx_data.qpos.at[ROBOT_QPOS_ADRS[:2]].set(pos))
     obs = _get_obs(mjx_data)
-    return Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos)), obs
+    return Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos), max_steps=max_steps, step=0), obs
 
 @jax.jit
-def step_env(env: Env, action: Action) -> tuple[Env, Observation, float]:
+def step_env(env: Env, action: Action) -> tuple[Env, Observation, float, bool, bool]:
     """
     Steps the env using the given `action`.
 
     Args:
-        env (mjx.Data): The env state to step.
-        action (jax.Array): The action taken. (target_vel_x, target_vel_y)
+        env (Env): The env state to step.
+        action (Action): The action to take.
 
     Returns:
-        mjx.Data: The new env state.
+        Env: The new env state.
+        Observation: The observation of the new env state.
+        float: The reward.
+        bool: terminated (reached a final pos, good or bad).
+        bool: truncated (was forcefully terminated).
     """
     mjx_data = env.mjx_data
     new_qvel = mjx_data.qvel
@@ -107,11 +116,11 @@ def step_env(env: Env, action: Action) -> tuple[Env, Observation, float]:
     mjx_data = mjx_data.replace(ctrl=mjx_data.ctrl.at[ROBOT_CTRL_ADRS[:2]].set(f))
     mjx_data = mjx.step(_MJX_MODEL, mjx_data)
     obs = _get_obs(mjx_data)
-    new_env_state = Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos))
-    return new_env_state, obs, new_env_state.reward
+    new_env_state = Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos), max_steps=env.max_steps, step=env.step + 1)
+    return new_env_state, obs, new_env_state.reward, False, new_env_state.step >= new_env_state.max_steps
 
 if __name__ == "__main__":
-    env, _ = new_env()
+    env, _ = new_env(200)
     mj_data = mjx.get_data(_MJ_MODEL, env.mjx_data)
 
     duration = 2.  # (seconds)
