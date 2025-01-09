@@ -63,7 +63,6 @@ def new_env(max_steps: int, key: Optional[jax.Array]) -> tuple[Env, Observation]
     obs = _get_obs(mjx_data)
     return Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos), max_steps=max_steps, step=0), obs
 
-@jax.jit
 def step_env(env: Env, action: Action) -> tuple[Env, Observation, float, bool, bool]:
     """
     Steps the env using the given `action`.
@@ -120,8 +119,10 @@ def step_env(env: Env, action: Action) -> tuple[Env, Observation, float, bool, b
     return new_env_state, obs, new_env_state.reward, False, new_env_state.step >= new_env_state.max_steps
 
 if __name__ == "__main__":
-    env, _ = new_env(200)
+    env, _ = new_env(200, None)
     mj_data = mjx.get_data(_MJ_MODEL, env.mjx_data)
+
+    jitted_step_env = jax.jit(step_env)
 
     duration = 2.  # (seconds)
     framerate = 25  # (Hz)
@@ -143,7 +144,7 @@ if __name__ == "__main__":
         target_vel = jnp.array([1., 0.]) # placeholder for policy output
         action = Action(target_vel, kick)
 
-        env, obs, reward = step_env(env, action)
+        env, obs, reward, _, _ = jitted_step_env(env, action)
         print(obs, reward)
         if len(frames) < env.mjx_data.time * framerate:
             mj_data = mjx.get_data(_MJ_MODEL, env.mjx_data)
