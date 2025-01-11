@@ -1,3 +1,5 @@
+# based on https://github.com/luchris429/purejaxrl/blob/main/purejaxrl/ppo.py
+
 from typing import NamedTuple
 import numpy as np
 import jax
@@ -12,8 +14,15 @@ from ssl_env import new_env, step_env, Action, Observation, Env
 
 SEED = 42
 N_ENVS = 1
-NUM_STEPS = 100
 EPISODES = 1
+NUM_STEPS = 100
+CLIP_EPS = 0.2
+VF_COEF = 0.5
+ENT_COEF = 0.01
+
+# gae
+GAMMA = 0.99
+GAE_LAMBDA = 0.95
 
 
 class ActorCritic(nnx.Module):
@@ -63,10 +72,10 @@ class Transition(NamedTuple):
 def rollout(model, n_steps, rng):
     rngs = jax.random.split(rng, N_ENVS)
     envs, obsv = jax.vmap(lambda key: new_env(key))(rngs)
+    obsv = obsv.pos  # silly fix for now
 
     def _env_step(runner_state, unused):
         env_state, last_obs, rng = runner_state
-        last_obs = last_obs.pos
 
         # SELECT ACTION
         rng, _rng = jax.random.split(rng)
@@ -77,7 +86,9 @@ def rollout(model, n_steps, rng):
         # STEP ENV
         actions_formatted = jax.vmap(lambda action: Action(target_vel=action, kick=False))(actions)
         env_state, obsv, reward, done = jax.vmap(step_env)(env_state, actions_formatted)
-        jax.debug.print("rew={rew}", rew=reward)
+        obsv = obsv.pos  # silly fix for now
+
+        # jax.debug.print("rew={rew}", rew=reward)
         transition = Transition(
             done, actions, value, reward, log_prob, last_obs
         )
@@ -89,6 +100,66 @@ def rollout(model, n_steps, rng):
         _env_step, runner_state, None, NUM_STEPS
     )
 
+@jax.jit
+def calculate_gae(traj_batch, last_val):
+    def _get_advantages(gae_and_next_value, transition):
+        gae, next_value = gae_and_next_value
+        done, value, reward = (
+            transition.done,
+            transition.value,
+            transition.reward,
+        )
+        delta = reward + GAMMA * next_value * (1 - done) - value
+        gae = delta + GAMMA * GAE_LAMBDA * (1 - done) * gae
+        return (gae, value), gae
+
+    _, advantages = jax.lax.scan(
+        _get_advantages,
+        (jnp.zeros_like(last_val), last_val),
+        traj_batch,
+        reverse=True,
+        unroll=16,
+    )
+    return advantages, advantages + traj_batch.value
+
+def loss_fn(model, traj_batch, gae, targets):
+    # RERUN NETWORK
+    pi, value = model(traj_batch.obs)
+    log_prob = pi.log_prob(traj_batch.action)
+
+    # CALCULATE VALUE LOSS
+    value_pred_clipped = traj_batch.value + (
+        value - traj_batch.value
+    ).clip(-CLIP_EPS, CLIP_EPS)
+    value_losses = jnp.square(value - targets)
+    value_losses_clipped = jnp.square(value_pred_clipped - targets)
+    value_loss = (
+        0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
+    )
+
+    # CALCULATE ACTOR LOSS
+    ratio = jnp.exp(log_prob - traj_batch.log_prob)
+    gae = (gae - gae.mean()) / (gae.std() + 1e-8)
+    loss_actor1 = ratio * gae
+    loss_actor2 = (
+        jnp.clip(
+            ratio,
+            1.0 - CLIP_EPS,
+            1.0 + CLIP_EPS,
+        )
+        * gae
+    )
+    loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
+    loss_actor = loss_actor.mean()
+    entropy = pi.entropy().mean()
+
+    total_loss = (
+        loss_actor
+        + VF_COEF * value_loss
+        - ENT_COEF * entropy
+    )
+    return total_loss, (value_loss, loss_actor, entropy)
+
 
 if __name__ == "__main__":
     rng = jax.random.PRNGKey(SEED)
@@ -96,4 +167,12 @@ if __name__ == "__main__":
     optimizer = nnx.Optimizer(model, optax.adam(learning_rate=0.1))
 
     for i in range(EPISODES):
+        # # COLLECT TRAJECTORIES
         runner_state, traj_batch = rollout(model, 200, rng)
+
+        # CALCULATE ADVANTAGE
+        env_state, last_obs, rng = runner_state
+        _, last_val = model(last_obs)
+
+        advantages, targets = calculate_gae(traj_batch, last_val)
+        print(advantages.shape, targets.shape)
