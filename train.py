@@ -13,9 +13,10 @@ from ssl_env import new_env, step_env, Action, Observation, Env
 
 
 SEED = 42
-N_ENVS = 1
+N_ENVS = 2
 EPISODES = 1
-NUM_STEPS = 100
+K = 40
+NUM_STEPS = 10
 CLIP_EPS = 0.2
 VF_COEF = 0.5
 ENT_COEF = 0.01
@@ -51,11 +52,8 @@ class ActorCritic(nnx.Module):
         )
 
     def __call__(self, x):
-        # actor
         actor_mean = self.actor(x)
-        pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(self.log_std))
-
-        # value
+        pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(self.log_std.value))
         return pi, self.critic(x)
 
 
@@ -128,36 +126,22 @@ def loss_fn(model, traj_batch, gae, targets):
     log_prob = pi.log_prob(traj_batch.action)
 
     # CALCULATE VALUE LOSS
-    value_pred_clipped = traj_batch.value + (
-        value - traj_batch.value
-    ).clip(-CLIP_EPS, CLIP_EPS)
+    value_pred_clipped = traj_batch.value + (value - traj_batch.value).clip(-CLIP_EPS, CLIP_EPS)
     value_losses = jnp.square(value - targets)
     value_losses_clipped = jnp.square(value_pred_clipped - targets)
-    value_loss = (
-        0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()
-    )
+    value_loss = 0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()  # clipped MSE ??
 
     # CALCULATE ACTOR LOSS
     ratio = jnp.exp(log_prob - traj_batch.log_prob)
     gae = (gae - gae.mean()) / (gae.std() + 1e-8)
-    loss_actor1 = ratio * gae
-    loss_actor2 = (
-        jnp.clip(
-            ratio,
-            1.0 - CLIP_EPS,
-            1.0 + CLIP_EPS,
-        )
-        * gae
-    )
-    loss_actor = -jnp.minimum(loss_actor1, loss_actor2)
+    unclipped_surrogate = ratio * gae
+    clipped_surrogate = jnp.clip(ratio, 1.0 - CLIP_EPS, 1.0 + CLIP_EPS) * gae
+    loss_actor = -jnp.minimum(unclipped_surrogate, clipped_surrogate)
     loss_actor = loss_actor.mean()
+
     entropy = pi.entropy().mean()
 
-    total_loss = (
-        loss_actor
-        + VF_COEF * value_loss
-        - ENT_COEF * entropy
-    )
+    total_loss = loss_actor + VF_COEF * value_loss - ENT_COEF * entropy
     return total_loss, (value_loss, loss_actor, entropy)
 
 
@@ -169,10 +153,16 @@ if __name__ == "__main__":
     for i in range(EPISODES):
         # # COLLECT TRAJECTORIES
         runner_state, traj_batch = rollout(model, 200, rng)
+        print(traj_batch.reward[-1])
 
         # CALCULATE ADVANTAGE
         env_state, last_obs, rng = runner_state
         _, last_val = model(last_obs)
 
         advantages, targets = calculate_gae(traj_batch, last_val)
-        print(advantages.shape, targets.shape)
+        # print(advantages.shape, targets.shape)
+
+        for k in range(K):
+            grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
+            (total_loss, (value_loss, loss_actor, entropy)), grad = grad_fn(model, traj_batch, advantages, targets)
+            optimizer.update(grad)
