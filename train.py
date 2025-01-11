@@ -6,9 +6,11 @@ from flax import nnx
 from flax.nnx import initializers
 import distrax
 
+SEED = 42
 N_ENVS = 100
 EPISODES = 10
 
+jitted_vmapped_step = jax.jit(jax.vmap(step_env))
 
 class ActorCritic(nnx.Module):
     def __init__(self, observation_size, action_size, rngs: nnx.Rngs):
@@ -32,10 +34,23 @@ class ActorCritic(nnx.Module):
         return distrax.MultivariateNormalDiag(actor_mean, jnp.exp(self.log_std))
 
 
+# @jax.jit(static_argnums=0)
+def rollout(model, n_steps, rng):
+    rngs = jax.random.split(rng, N_ENVS)
+    envs, obss = jax.vmap(lambda key: new_env(key))(rngs)
+
+    for i in range(n_steps):
+        obss = obss.pos  # only care about pos for now
+        actions = model(obss).sample(seed=rng)
+        print(obss, actions)
+        actions = jax.vmap(lambda action: Action(target_vel=action, kick=False))(actions)
+        envs, obss, rewards, done = jitted_vmapped_step(envs, actions)
+        print(i, rewards)
+
+
 if __name__ == "__main__":
-    jitted_step = jax.jit(step_env)
-    model = ActorCritic(2, 2, nnx.Rngs(0))
-    jitted_policy = model #jax.jit(lambda obs: model(obs))
+    rng = jax.random.PRNGKey(SEED)
+    model = ActorCritic(2, 2, nnx.Rngs(SEED))
 
     # def _env_step(runner_state, unused):
     #     """
@@ -84,17 +99,4 @@ if __name__ == "__main__":
         #     print(rewards.min())
 
         # exit(0)
-        rng = jax.random.PRNGKey(0)
-        env, obs = new_env(200, rng)
-
-        done = False
-        while not done:
-            obs = jnp.array([obs.pos]) # fake a batch
-            action = jitted_policy(obs).sample(seed=rng)[0]
-            print(obs, action)
-            action = Action(target_vel=action, kick=False)
-            
-            env, obs, reward, terminated, truncated = jitted_step(env, action)
-            print(env.step, reward)
-
-            done = terminated or truncated
+        rollout(model, 200, rng)
