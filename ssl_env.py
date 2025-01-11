@@ -61,7 +61,7 @@ def new_env(key: Optional[jax.Array]) -> tuple[Env, Observation]:
     obs = _get_obs(mjx_data)
     return Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos)), obs
 
-def step_env(env: Env, action: Action) -> tuple[Env, Observation, float, bool, bool]:
+def step_env(env: Env, action: Action) -> tuple[Env, Observation, float, bool]:
     """
     Steps the env using the given `action`.
 
@@ -113,8 +113,8 @@ def step_env(env: Env, action: Action) -> tuple[Env, Observation, float, bool, b
     mjx_data = mjx_data.replace(ctrl=mjx_data.ctrl.at[ROBOT_CTRL_ADRS[:2]].set(f))
     mjx_data = mjx.step(_MJX_MODEL, mjx_data)
     obs = _get_obs(mjx_data)
-    new_env_state = Env(mjx_data=mjx_data, reward=jnp.linalg.norm(TARGET_POS - obs.pos))
-    return new_env_state, obs, new_env_state.reward, False
+    reward = jnp.linalg.norm(TARGET_POS - obs.pos)
+    return Env(mjx_data, reward), obs, reward, False
 
 if __name__ == "__main__":
     env, _ = new_env(200, None)
