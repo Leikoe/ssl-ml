@@ -1,4 +1,5 @@
 # based on https://github.com/luchris429/purejaxrl/blob/main/purejaxrl/ppo.py
+# and https://towardsdatascience.com/breaking-down-state-of-the-art-ppo-implementations-in-jax-6f102c06c149
 
 from typing import NamedTuple
 import numpy as np
@@ -66,7 +67,7 @@ class Transition(NamedTuple):
     obs: jnp.ndarray
 
 
-@functools.partial(jax.jit, static_argnums=0)
+# @functools.partial(jax.jit, static_argnums=0)
 def rollout(model, n_steps, rng):
     rngs = jax.random.split(rng, N_ENVS)
     envs, obsv = jax.vmap(lambda key: new_env(key))(rngs)
@@ -83,12 +84,13 @@ def rollout(model, n_steps, rng):
 
         # STEP ENV
         actions_formatted = jax.vmap(lambda action: Action(target_vel=action, kick=False))(actions)
+        print(actions_formatted)
         env_state, obsv, reward, done = jax.vmap(step_env)(env_state, actions_formatted)
         obsv = obsv.pos  # silly fix for now
 
         # jax.debug.print("rew={rew}", rew=reward)
         transition = Transition(
-            done, actions, value, reward, log_prob, last_obs
+            done, actions, value, reward.flatten(), log_prob, last_obs
         )
         runner_state = (env_state, obsv, rng)
         return runner_state, transition
@@ -129,14 +131,14 @@ def loss_fn(model, traj_batch, gae, targets):
     value_pred_clipped = traj_batch.value + (value - traj_batch.value).clip(-CLIP_EPS, CLIP_EPS)
     value_losses = jnp.square(value - targets)
     value_losses_clipped = jnp.square(value_pred_clipped - targets)
-    value_loss = 0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()  # clipped MSE ??
+    value_loss = 0.5 * jnp.maximum(value_losses, value_losses_clipped).mean()  # PureJaxRL's clipped MSE
 
     # CALCULATE ACTOR LOSS
     ratio = jnp.exp(log_prob - traj_batch.log_prob)
     gae = (gae - gae.mean()) / (gae.std() + 1e-8)
     unclipped_surrogate = ratio * gae
     clipped_surrogate = jnp.clip(ratio, 1.0 - CLIP_EPS, 1.0 + CLIP_EPS) * gae
-    loss_actor = -jnp.minimum(unclipped_surrogate, clipped_surrogate)
+    loss_actor = -jnp.minimum(unclipped_surrogate, clipped_surrogate) # -1*L because gradient ascent in ppo paper and we are doing gradient descent here
     loss_actor = loss_actor.mean()
 
     entropy = pi.entropy().mean()
@@ -153,7 +155,8 @@ if __name__ == "__main__":
     for i in range(EPISODES):
         # # COLLECT TRAJECTORIES
         runner_state, traj_batch = rollout(model, 200, rng)
-        print(traj_batch.reward[-1])
+        print(jax.tree.map(lambda x: x.shape, traj_batch))
+        exit()
 
         # CALCULATE ADVANTAGE
         env_state, last_obs, rng = runner_state
