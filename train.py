@@ -14,8 +14,9 @@ from ssl_env import new_env, step_env, Action, Observation, Env
 
 
 SEED = 42
-N_ENVS = 2
-EPISODES = 1
+LR = 2.5e-4
+N_ENVS = 2048
+EPISODES = 10
 K = 40
 NUM_STEPS = 10
 CLIP_EPS = 0.2
@@ -55,7 +56,7 @@ class ActorCritic(nnx.Module):
     def __call__(self, x):
         actor_mean = self.actor(x)
         pi = distrax.MultivariateNormalDiag(actor_mean, jnp.exp(self.log_std.value))
-        return pi, self.critic(x)
+        return pi, jnp.squeeze(self.critic(x), axis=-1)
 
 
 class Transition(NamedTuple):
@@ -67,8 +68,8 @@ class Transition(NamedTuple):
     obs: jnp.ndarray
 
 
-# @functools.partial(jax.jit, static_argnums=0)
-def rollout(model, n_steps, rng):
+@functools.partial(jax.jit, static_argnums=0)
+def rollout(model, rng):
     rngs = jax.random.split(rng, N_ENVS)
     envs, obsv = jax.vmap(lambda key: new_env(key))(rngs)
     obsv = obsv.pos  # silly fix for now
@@ -84,13 +85,13 @@ def rollout(model, n_steps, rng):
 
         # STEP ENV
         actions_formatted = jax.vmap(lambda action: Action(target_vel=action, kick=False))(actions)
-        print(actions_formatted)
+        # print(actions_formatted)
         env_state, obsv, reward, done = jax.vmap(step_env)(env_state, actions_formatted)
         obsv = obsv.pos  # silly fix for now
 
         # jax.debug.print("rew={rew}", rew=reward)
         transition = Transition(
-            done, actions, value, reward.flatten(), log_prob, last_obs
+            done, actions, value, reward, log_prob, last_obs
         )
         runner_state = (env_state, obsv, rng)
         return runner_state, transition
@@ -104,13 +105,17 @@ def rollout(model, n_steps, rng):
 def calculate_gae(traj_batch, last_val):
     def _get_advantages(gae_and_next_value, transition):
         gae, next_value = gae_and_next_value
+        # print(gae.shape, next_value.shape)
         done, value, reward = (
             transition.done,
             transition.value,
             transition.reward,
         )
+        # print(done.shape, value.shape, reward.shape)
         delta = reward + GAMMA * next_value * (1 - done) - value
+        # print("delta:", delta.shape, reward.shape, next_value.shape, done.shape, value.shape)
         gae = delta + GAMMA * GAE_LAMBDA * (1 - done) * gae
+        # print(gae.shape, value.shape)
         return (gae, value), gae
 
     _, advantages = jax.lax.scan(
@@ -150,22 +155,33 @@ def loss_fn(model, traj_batch, gae, targets):
 if __name__ == "__main__":
     rng = jax.random.PRNGKey(SEED)
     model = ActorCritic(2, 2, nnx.Rngs(SEED))
-    optimizer = nnx.Optimizer(model, optax.adam(learning_rate=0.1))
+    optimizer = nnx.Optimizer(model, optax.adam(learning_rate=LR, eps=1e-5))
 
-    for i in range(EPISODES):
+    def _step(rng, x):
         # # COLLECT TRAJECTORIES
-        runner_state, traj_batch = rollout(model, 200, rng)
-        print(jax.tree.map(lambda x: x.shape, traj_batch))
-        exit()
+        runner_state, traj_batch = rollout(model, rng)
+        # print(traj_batch.reward[-1].mean())
+        # print(jax.tree.map(lambda x: x.shape, traj_batch))
 
         # CALCULATE ADVANTAGE
         env_state, last_obs, rng = runner_state
         _, last_val = model(last_obs)
 
         advantages, targets = calculate_gae(traj_batch, last_val)
-        # print(advantages.shape, targets.shape)
 
         for k in range(K):
             grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
             (total_loss, (value_loss, loss_actor, entropy)), grad = grad_fn(model, traj_batch, advantages, targets)
             optimizer.update(grad)
+            jax.debug.print("loss {l}", l=total_loss)
+
+        return rng, None
+
+    train_fn = lambda rng: jax.lax.scan(
+        _step,
+        rng,
+        length=EPISODES,
+    )
+
+    jitted_train_fn = jax.jit(train_fn)
+    train_fn(rng)
