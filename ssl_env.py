@@ -113,7 +113,7 @@ def step_env(env: Env, action: Action) -> tuple[Env, Observation, float, bool]:
     mjx_data = mjx_data.replace(ctrl=mjx_data.ctrl.at[ROBOT_CTRL_ADRS[:2]].set(f))
     mjx_data = mjx.step(_MJX_MODEL, mjx_data)
     obs = _get_obs(mjx_data)
-    reward = jnp.linalg.norm(TARGET_POS - obs.pos)
+    reward = -jnp.linalg.norm(TARGET_POS - obs.pos)
     return Env(mjx_data, reward), obs, reward, False
 
 if __name__ == "__main__":

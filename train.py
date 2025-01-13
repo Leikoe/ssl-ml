@@ -15,10 +15,13 @@ from ssl_env import new_env, step_env, Action, Observation, Env
 
 SEED = 42
 LR = 2.5e-4
-N_ENVS = 2048
-EPISODES = 10
-K = 40
+TOTAL_TIMESTEPS = 5_000_000
+N = 2048  # number of envs
 NUM_STEPS = 10
+NUM_UPDATES = TOTAL_TIMESTEPS // NUM_STEPS // N
+K = 4  # number of epochs
+M = 32  # number of minibatches
+MINIBATCH_SIZE = N * NUM_STEPS // M
 CLIP_EPS = 0.2
 VF_COEF = 0.5
 ENT_COEF = 0.01
@@ -70,7 +73,7 @@ class Transition(NamedTuple):
 
 @functools.partial(jax.jit, static_argnums=0)
 def rollout(model, rng):
-    rngs = jax.random.split(rng, N_ENVS)
+    rngs = jax.random.split(rng, N)
     envs, obsv = jax.vmap(lambda key: new_env(key))(rngs)
     obsv = obsv.pos  # silly fix for now
 
@@ -160,7 +163,7 @@ if __name__ == "__main__":
     def _step(rng, x):
         # # COLLECT TRAJECTORIES
         runner_state, traj_batch = rollout(model, rng)
-        # print(traj_batch.reward[-1].mean())
+        jax.debug.print("mean last reward: {rew}", rew=traj_batch.reward[-1].mean())
         # print(jax.tree.map(lambda x: x.shape, traj_batch))
 
         # CALCULATE ADVANTAGE
@@ -169,18 +172,53 @@ if __name__ == "__main__":
 
         advantages, targets = calculate_gae(traj_batch, last_val)
 
-        for k in range(K):
-            grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
-            (total_loss, (value_loss, loss_actor, entropy)), grad = grad_fn(model, traj_batch, advantages, targets)
-            optimizer.update(grad)
-            jax.debug.print("loss {l}", l=total_loss)
+        def _epoch(update_state, _x):
+            def _update_minbatch(_carry, batch_info):
+                traj_batch, advantages, targets = batch_info
 
+                grad_fn = nnx.value_and_grad(loss_fn, has_aux=True)
+                (total_loss, (value_loss, loss_actor, entropy)), grad = grad_fn(model, traj_batch, advantages, targets)
+                optimizer.update(grad)
+                return _carry, total_loss
+
+            traj_batch, advantages, targets, rng = update_state
+            rng, _rng = jax.random.split(rng)
+            batch_size = MINIBATCH_SIZE * M
+            assert (
+                batch_size == NUM_STEPS * N
+            ), "batch size must be equal to number of steps * number of envs"
+            permutation = jax.random.permutation(_rng, batch_size)
+            batch = (traj_batch, advantages, targets)
+            batch = jax.tree_util.tree_map(
+                lambda x: x.reshape((batch_size,) + x.shape[2:]), batch
+            )
+            shuffled_batch = jax.tree_util.tree_map(
+                lambda x: jnp.take(x, permutation, axis=0), batch
+            )
+            minibatches = jax.tree_util.tree_map(
+                lambda x: jnp.reshape(
+                    x, [M, -1] + list(x.shape[1:])
+                ),
+                shuffled_batch,
+            )
+            _, total_loss = jax.lax.scan(
+                _update_minbatch, None, minibatches
+            )
+            update_state = (traj_batch, advantages, targets, rng)
+            return update_state, total_loss
+
+        update_state = (traj_batch, advantages, targets, rng)
+        update_state, loss_info = jax.lax.scan(
+            _epoch, update_state, None, K
+
+        )
+        runner_state = (env_state, last_obs, rng)
         return rng, None
 
     train_fn = lambda rng: jax.lax.scan(
         _step,
         rng,
-        length=EPISODES,
+        length=NUM_UPDATES,
     )
 
     jitted_train_fn = jax.jit(train_fn)
